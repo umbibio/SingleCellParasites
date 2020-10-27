@@ -1,0 +1,109 @@
+---
+title: "scRNAseqmalariaAtlas"
+author: "Yasaman Rezvani"
+date: "10/25/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r load libs ,warning=FALSE}
+library(tidyverse)
+library(Seurat)
+library(openxlsx)
+library(ggplot2)
+library(ggfortify)
+library(jcolors)
+require(gridExtra)
+library(grid)
+library(matrixStats)
+library(scater, quietly = TRUE)
+require("Matrix")
+library(patchwork)
+
+
+```
+
+## Processing the expression matrices 
+```{r}
+processCounts <- function(expr){
+  cols <- expr$X
+  expr <- t(expr[,-1])
+  colnames(expr) <- cols
+  return(expr)
+}
+```
+
+## reading expression matrix and meta data from 10X  
+
+```{r 10xData, echo=FALSE}
+abs.path <- "~/work/SCParasites/scRNAseqPlasmodAtlas/Expression_Matrices/10X/"
+
+alphapb10x.count.file <- "allpb10x/allpb10x_counts.csv"
+alphapb10x.pheno.file <- "allpb10x/allpb10x_pheno.csv"
+
+pb10x.IDC.count.file <- "pb10xIDC/pb10xIDC_counts.csv"
+pb10x.IDC.pheno.file <- "pb10xIDC/pb10xIDC_pheno.csv"
+
+pf10x.IDC.count.file <- "pf10xIDC/pf10xIDC_counts.csv"
+pf10x.IDC.pheno.file <- "pf10xIDC/pf10xIDC_pheno.csv"
+
+pk10x.IDC.count.file <- "pk10xIDC/pk10xIDC_counts.csv"
+pk10x.IDC.pheno.file <- "pk10xIDC/pk10xIDC_pheno.csv"
+
+
+alphapb10x.count <- read.csv(paste(abs.path, pb10x.IDC.count.file, sep = ""))
+alphapb10x.pheno <- read.csv(paste(abs.path, pb10x.IDC.pheno.file, sep = ""))
+
+
+```
+
+## reading smart seq single cells 
+
+```{r SmartSeq2, echo= FALSE}
+abs.path <- "~/work/SCParasites/scRNAseqPlasmodAtlas/Expression_Matrices/Smartseq2/"
+
+SS2_counts.csv.file <- "SS2_counts.csv"
+SS2_pheno.csv.file <- "SS2_pheno.csv"
+SS2_tmmlogcounts.csv.file <- "SS2_tmmlogcounts.csv"
+
+SS2_counts       <- read.csv(paste(abs.path, SS2_counts.csv.file, sep = ""))
+SS2_tmmlogcounts <- read.csv(paste(abs.path, SS2_tmmlogcounts.csv.file, sep = ""))
+SS2_pheno        <- read.csv(paste(abs.path, SS2_pheno.csv.file, sep = "")) 
+
+
+```
+
+
+## keeping blood stage cells
+### shz = (male, female, shizont, trophozite),  Ring 
+
+```{r}
+SS2_pheno <- SS2_pheno %>%
+  filter((ShortenedLifeStage == "Shz" | ShortenedLifeStage == "Ring"))
+
+SS2_tmmlogcounts <- SS2_tmmlogcounts[,which(SS2_pheno$X %in% colnames(SS2_tmmlogcounts))]
+dim(SS2_tmmlogcounts)
+```
+
+
+#3 create Seurat object 
+
+```{r S.O, echo=FALSE}
+
+SS2.expr <- processCounts(SS2_tmmlogcounts)
+S.O.SS2 <- CreateSeuratObject(counts = SS2.expr, min.cells = 3, min.features = 200)
+VlnPlot(S.O.SS2, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.SS2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+
+```
+
+```{r}
+S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 200 & nFeature_RNA < 650 )
+
+```
+
