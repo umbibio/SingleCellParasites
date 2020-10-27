@@ -35,6 +35,45 @@ processCounts <- function(expr){
   colnames(expr) <- cols
   return(expr)
 }
+
+dfToMat <- function(df){
+  matx <- as.matrix(df[,-1])
+  rownames(matx) <- df[,1]
+  return(matx)
+  
+}
+
+prep_S.O <- function(S.O){
+  S.O <- NormalizeData(S.O, normalization.method = "LogNormalize", scale.factor = 10000)
+  S.O <- FindVariableFeatures(S.O, selection.method = "vst", nfeatures = 2000)
+  all.genes <- rownames(S.O)
+  S.O <- ScaleData(S.O, features = all.genes)
+  S.O <- RunPCA(S.O, features = VariableFeatures(object = S.O))
+  S.O <- FindNeighbors(S.O, dims = 1:13)
+  S.O <- FindClusters(S.O, resolution = 0.1)
+  S.O <- RunUMAP(S.O, dims = 1:13)
+  return(S.O)
+}
+
+
+getNormExpr <- function(S.O, markers = ''){
+  expr.norm <- as.matrix(S.O[["RNA"]]@data)
+  rownames(expr.norm) <- gsub('-', '_',rownames(expr.norm))
+  expr.norm <- as.data.frame(expr.norm) 
+  expr.norm <- expr.norm %>% mutate(GeneID = rownames(expr.norm))
+  expr.norm <- expr.norm %>% gather(key = Sample, value = expr, -GeneID)
+  expr.norm <- expr.norm  %>% group_by(GeneID) %>% 
+    mutate(quantile = ifelse(expr <= quantile(expr)[2], 1, 
+                             ifelse(expr <= quantile(expr)[3], 2, 
+                                    ifelse(expr <= quantile(expr)[4], 3,4))))
+  if(markers != ''){
+    expr.norm <- left_join(expr.norm, markers, by = 'GeneID')
+  }
+  
+  
+  return(expr.norm)
+}
+
 ```
 
 ## reading expression matrix and meta data from 10X  
@@ -78,15 +117,40 @@ SS2_pheno        <- read.csv(paste(abs.path, SS2_pheno.csv.file, sep = ""))
 ```
 
 
+# creating seurat object from all data 
+```{r}
+SS2.expr <- SS2_counts
+S.O.SS2 <- CreateSeuratObject(counts = SS2.expr, min.cells = 3, min.features = 200)
+
+VlnPlot(S.O.SS2, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.SS2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+#S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 1000 & nFeature_RNA < 4000)
+
+
+
+```
+
+
+
 ## keeping blood stage cells
 ### shz = (male, female, shizont, trophozite),  Ring 
+### blfs (blood life Stage)
 
 ```{r}
-SS2_pheno <- SS2_pheno %>%
-  filter((ShortenedLifeStage == "Shz" | ShortenedLifeStage == "Ring"))
+SS2_pheno.blfs <- SS2_pheno %>%
+ filter((ShortenedLifeStage == "Shz" | ShortenedLifeStage == "Ring"))
+dim(SS2_pheno.blfs)
 
-SS2_tmmlogcounts <- SS2_tmmlogcounts[,which(SS2_pheno$X %in% colnames(SS2_tmmlogcounts))]
-dim(SS2_tmmlogcounts)
+SS2_counts.blfs <- 
+  SS2_counts[,c(1,which(colnames(SS2_counts) %in% SS2_pheno.blfs$X))]
+dim(SS2_counts.blfs)
+
+SS2_tmmlogcounts.blfs <- 
+  SS2_tmmlogcounts[,c(1,which(colnames(SS2_tmmlogcounts) %in% SS2_pheno.blfs$X))]
+dim(SS2_tmmlogcounts.blfs)
+
+
 ```
 
 
@@ -94,16 +158,29 @@ dim(SS2_tmmlogcounts)
 
 ```{r S.O, echo=FALSE}
 
-SS2.expr <- processCounts(SS2_tmmlogcounts)
-S.O.SS2 <- CreateSeuratObject(counts = SS2.expr, min.cells = 3, min.features = 200)
-VlnPlot(S.O.SS2, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
-FeatureScatter(S.O.SS2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+S.O.SS2.blfs <- CreateSeuratObject(counts = SS2_counts.blfs, min.cells = 3, min.features = 200)
 
+
+# add life stages to meta data 
+meta <- S.O.SS2.blfs@meta.data
+cell.names <- rownames(S.O.SS2.blfs@meta.data)
+lfstage <-
+  SS2_pheno.blfs$ShortenedLifeStage[which(SS2_pheno.blfs$X %in% cell.names)]
+meta["ShortenedLifeStage"] <- lfstage
+
+meta.new <- subset(meta, select = c("ShortenedLifeStage"))
+S.O.SS2.blfs <- AddMetaData(S.O.SS2.blfs, meta.new)
+
+
+VlnPlot(S.O.SS2.blfs, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, group.by = "ShortenedLifeStage")
+
+FeatureScatter(S.O.SS2.blfs, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+S.O.SS2.blfs <- subset(S.O.SS2.blfs, subset = nFeature_RNA > 200)
 
 ```
 
 ```{r}
-S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 200 & nFeature_RNA < 650 )
 
 ```
 
