@@ -1,0 +1,396 @@
+---
+title: "scRNAseqToxoAtlas"
+author: "Kourosh Z."
+date: "10/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load libs, echo=FALSE, warning=FALSE}
+library(tidyverse)
+library(Seurat)
+library(openxlsx)
+library(ggplot2)
+library(ggfortify)
+library(jcolors)
+require(gridExtra)
+library(grid)
+library(matrixStats)
+```
+## Reading the data
+These files were prepared using the python script `get_h5ad_data_kz.ipynb`. 
+
+```{r, echo=FALSE}
+input.dir <- '~/work/SCParasites/scRNAseqToxoAtlas/'
+
+rh384.expr.file <- 'rh384_expression_filtered.csv'
+rh96.expr.file  <- 'rh96_expression_filtered.csv'
+pru.expr.file   <- 'pru_expression_filtered.csv'
+me49.expr.file  <- 'me49_expression_filtered.csv'
+pru.falc.expr.file   <- 'pru_falc_expression_filtered.csv'
+
+rh384.obs.file <- 'rh384_obs_filtered.csv'
+rh96.obs.file  <- 'rh96_obs_filtered.csv'
+pru.obs.file   <- 'pru_obs_filtered.csv'
+me49.obs.file  <- 'me49_obs_filtered.csv'
+pru.obs.expr.file   <- 'pru_falc_obs_filtered.csv'
+
+rh384.var.file <- 'rh384_var_filtered.csv'
+rh96.var.file  <- 'rh96_var_filtered.csv'
+pru.var.file   <- 'pru_var_filtered.csv'
+me49.var.file  <- 'me49_var_filtered.csv'
+pru.var.expr.file   <- 'pru_falc_var_filtered.csv'
+```
+
+## Reading in the RH data
+```{r}
+rh384.expr <- read.csv(paste(input.dir, rh384.expr.file, sep = ''))
+rh96.expr  <- read.csv(paste(input.dir, rh96.expr.file, sep = ''))
+pru.expr <- read.csv(paste(input.dir, pru.expr.file, sep = ''))
+me49.expr <- read.csv(paste(input.dir, me49.expr.file, sep = ''))
+```
+
+## 
+```{r}
+rh384.var <- read.csv(paste(input.dir, rh384.var.file, sep = ''))
+rh96.var <- read.csv(paste(input.dir, rh96.var.file, sep = '')) # extracellular G1 phase
+pru.var <- read.csv(paste(input.dir, pru.var.file, sep = ''))
+me49.var <- read.csv(paste(input.dir, me49.var.file, sep = ''))
+
+```
+
+## Reading obs files
+```{r}
+rh384.obs <- read.csv(paste(input.dir, rh384.obs.file, sep = ''))
+rh96.obs <- read.csv(paste(input.dir, rh96.obs.file, sep = '')) # extracellular G1 phase
+pru.obs <- read.csv(paste(input.dir, pru.obs.file, sep = ''))
+me49.obs <- read.csv(paste(input.dir, me49.obs.file, sep = ''))
+
+
+
+
+```
+
+
+## Reading Markesr
+```{r Markers}
+markers.TB <- read.xlsx('~/work/SingleCellToxo/Input/Gene_modules_Waldman2019_KZ.xlsx', sheet = 5)
+markers.G1SM <- read.xlsx('~/work/SingleCellToxo/Input/Gene_modules_Waldman2019_KZ.xlsx', sheet = 4)
+
+ID.Orthologs <- read.xlsx('~/work/SingleCellToxo/Input/convertIDs.xlsx')
+
+markers.G1SM <- left_join(markers.G1SM, ID.Orthologs, by = c('GeneID' = 'TGME49ID')) %>% 
+  dplyr::select(TGGT1ID, Marker) %>% dplyr::filter(!is.na(Marker)) %>% transmute(GeneID = TGGT1ID, Marker = Marker)
+
+markers <- rbind(markers.G1SM, markers.TB) 
+
+
+path.supp.files <- "~/work/SCParasites/scRNAseqToxoAtlas/Submission_analysis/Data/"
+#table of genes that are differentially expressed across all cell cycle states in 384-well RH dataset
+cc.markers <- read.csv(paste(path.supp.files,"sfile3_cell_cycle_marker_genes.csv", sep = ""), sep = '\t', header = T)
+cc.markers <- cc.markers %>% select(X, cell_cycle_phase)
+colnames(cc.markers) <- c("GeneID", "Marker")
+
+
+
+
+#markers <- rbind(cc.markers, markers.TB) 
+
+# cc.markers <- rh384.var %>% select(c(index, cc_cluster)) %>% filter(cc_cluster != "Unknown")
+# colnames(cc.markers) <- c("GeneID", "Marker")
+
+#markers <- cc.markers
+
+```
+
+
+## Processing the RH Fdata
+```{r}
+processCounts <- function(expr){
+  cols <- expr$index
+  expr <- t(expr[,-1])
+  colnames(expr) <- cols
+  return(expr)
+}
+```
+
+## converting IDs
+
+```{r}
+convertID <- function(expr){
+  expr.df <- expr %>% data.frame() %>% rownames_to_column(var = 'GeneID') 
+  expr.df <- left_join(ID.Orthologs, expr.df, by = c( 'TGME49ID' = 'GeneID')) %>%
+    select(-TGME49ID) 
+  row.names(expr.df) <- expr.df$TGGT1ID
+  expr.df$TGGT1ID <- NULL
+  expr <- expr.df
+  
+  return(expr)
+}
+
+```
+
+## expression matrices
+```{r}
+rh384.expr <- processCounts(rh384.expr)
+rh96.expr <- processCounts(rh96.expr)
+pru.expr <- processCounts(pru.expr)
+me49.expr <- processCounts(me49.expr)
+
+```
+
+
+## convert IDs Pru , ME49,  RH 
+```{r}
+pru.expr <- convertID(pru.expr)
+me49.expr <- convertID(me49.expr)
+
+```
+
+
+
+## Creating Saurat objects rh382
+```{r, echo=F}
+S.O.RH348 <- CreateSeuratObject(counts = rh384.expr, min.cells = 3, min.features = 200)
+VlnPlot(S.O.RH348, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.RH348, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+```{r, echo=F}
+S.O.RH96 <- CreateSeuratObject(counts = rh96.expr, min.cells = 3, min.features = 200)
+VlnPlot(S.O.RH96, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.RH96, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+```{r, echo=F}
+S.O.PRU <- CreateSeuratObject(counts = pru.expr, min.cells = 3, min.features = 200)
+VlnPlot(S.O.PRU, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.PRU, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+```{r, echo=F}
+S.O.ME49 <- CreateSeuratObject(counts = me49.expr, min.cells = 3, min.features = 200)
+VlnPlot(S.O.ME49, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.ME49, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+
+```{r}
+S.O.RH348 <- subset(S.O.RH348, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 )
+S.O.RH96  <- subset(S.O.RH96, subset = nFeature_RNA > 200 & nFeature_RNA < 5000 )
+S.O.PRU <- subset(S.O.PRU, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
+S.O.ME49 <- subset(S.O.RH96, subset = nFeature_RNA > 200 & nFeature_RNA < 3500 )
+```
+
+
+```{r}
+prep_S.O <- function(S.O){
+  S.O <- NormalizeData(S.O, normalization.method = "LogNormalize", scale.factor = 10000)
+  S.O <- FindVariableFeatures(S.O, selection.method = "vst", nfeatures = 2000)
+  all.genes <- rownames(S.O)
+  S.O <- ScaleData(S.O, features = all.genes)
+  S.O <- RunPCA(S.O, features = VariableFeatures(object = S.O))
+  S.O <- FindNeighbors(S.O, dims = 1:13)
+  S.O <- FindClusters(S.O, resolution = 0.1)
+  S.O <- RunUMAP(S.O, dims = 1:13)
+  return(S.O)
+}
+
+getNormExpr <- function(S.O, markers = ''){
+  expr.norm <- as.matrix(S.O[["RNA"]]@data)
+  rownames(expr.norm) <- gsub('-', '_',rownames(expr.norm))
+  expr.norm <- as.data.frame(expr.norm) 
+  expr.norm <- expr.norm %>% mutate(GeneID = rownames(expr.norm))
+  expr.norm <- expr.norm %>% gather(key = Sample, value = expr, -GeneID)
+  expr.norm <- expr.norm  %>% group_by(GeneID) %>% 
+    mutate(quantile = ifelse(expr <= quantile(expr)[2], 1, 
+                             ifelse(expr <= quantile(expr)[3], 2, 
+                                    ifelse(expr <= quantile(expr)[4], 3,4))))
+  if(markers != ''){
+    expr.norm <- left_join(expr.norm, markers, by = 'GeneID')
+  }
+  
+  
+  return(expr.norm)
+}
+
+getCellIdentity <- function(expr.norm, method = 'mix'){
+  cell.identity <- expr.norm %>% ungroup() %>% 
+    dplyr::select(Sample, expr, quantile, Marker) %>% distinct() 
+  cell.identity <- cell.identity %>% dplyr::filter(!is.na(Marker))
+  cell.identity <- cell.identity %>% group_by(Sample, Marker) %>% 
+    summarise(mean.expr = mean(expr),
+              sd.expr = sd(expr),
+              max.quantile = max(quantile), 
+              prop.expressed = sum(quantile >= 2) / n(),
+              prop.highly.expressed = sum(quantile >= 3) / n(),
+              prop.repressed = sum(quantile < 2) / n())
+  cell.identity <- cell.identity %>% 
+    dplyr::select(Sample, Marker, mean.expr, prop.highly.expressed) %>%
+    pivot_wider(names_from = Marker, values_from = c("mean.expr", "prop.highly.expressed")) 
+  
+  if(method == 'prop.highly.expressed'){
+    cell.identity <- cell.identity %>% 
+      mutate(cell.cycle = ifelse(prop.highly.expressed_G1 > prop.highly.expressed_SM , 'G1',
+                                 ifelse(prop.highly.expressed_G1 < 
+                                          prop.highly.expressed_SM, 'SM', 'NA')),
+             life.stage = ifelse(prop.highly.expressed_Tachyzoite > 
+                                   prop.highly.expressed_Bradyzoite, 'Tachy',
+                                 ifelse(prop.highly.expressed_Tachyzoite <
+                                          prop.highly.expressed_Bradyzoite, 'Brady', 'NA')))
+    
+  }else if(method == 'mean.expr'){
+    cell.identity <- cell.identity %>% 
+      mutate(cell.cycle = ifelse(mean.expr_G1 > 
+                                   mean.expr_SM , 'G1',
+                                 ifelse(mean.expr_G1 < mean.expr_SM, 'SM', 'NA')),
+             life.stage = ifelse(mean.expr_Tachyzoite > mean.expr_Bradyzoite, 'Tachy',
+                                 ifelse(mean.expr_Tachyzoite < mean.expr_Bradyzoite, 'Brady','NA')))
+    
+  }else if(method == 'mix'){
+    cell.identity <- cell.identity %>% 
+      mutate(cell.cycle = ifelse(prop.highly.expressed_G1 > prop.highly.expressed_SM , 'G1',
+                                 ifelse(prop.highly.expressed_G1 < 
+                                          prop.highly.expressed_SM, 'SM', 'NA')),
+             life.stage = ifelse(mean.expr_Tachyzoite > mean.expr_Bradyzoite, 'Tachy',
+                                 ifelse(mean.expr_Tachyzoite < mean.expr_Bradyzoite, 'Brady','NA')))
+  }
+  
+  cell.identity <- cell.identity %>% dplyr::select(Sample, cell.cycle, life.stage) %>% distinct()
+  
+  return(cell.identity)
+}
+
+getUMAP <- function(S.O, cell.identity, title = title, out.file='' ){
+  umap <- S.O[['umap']]@cell.embeddings
+  umap <- as.data.frame(umap) %>% mutate(Sample = rownames(umap)) 
+  umap <- inner_join(cell.identity, umap, by = 'Sample')
+  umap <- umap %>% ungroup() %>% mutate_at(vars(-contains('UMAp')), funs(factor))
+  
+  p1 <- ggplot(umap, aes(x=UMAP_1,y=UMAP_2)) + 
+    geom_point(aes(
+      fill = life.stage), shape=21, size = 1) + theme_bw()
+  p2 <- ggplot(umap, aes(x=UMAP_1,y=UMAP_2)) + 
+    geom_point(aes(
+      fill = cell.cycle), shape=21, size = 1) + theme_bw()
+  
+  p <- grid.arrange(p1, p2, ncol=2, top = textGrob(title))
+  if(out.file != ''){
+    ggsave(out.file,
+         plot = p, # or give ggplot object name as in myPlot,
+         width = 8, height = 5, 
+         units = "in", # other options c("in", "cm", "mm"), 
+         dpi = 300)
+  }
+  
+  plot(p)
+  return(umap)
+}
+
+getPCA <- function(S.O, cell.identity, title = title, out.file='' ){
+  pc <- S.O[['pca']]@cell.embeddings
+  pc <- as.data.frame(pc) %>% mutate(Sample = rownames(pc)) 
+  pc <- inner_join(cell.identity, pc, by = 'Sample')
+  pc <- pc %>% ungroup() %>% mutate_at(vars(-contains('PC')), funs(factor))
+  
+  p1 <- ggplot(pc, aes(x=PC_1,y=PC_2)) + 
+    geom_point(aes(
+      fill = life.stage), shape=21, size = 1) + theme_bw()
+  p2 <- ggplot(pc, aes(x=PC_1,y=PC_2)) + 
+    geom_point(aes(
+      fill = cell.cycle), shape=21, size = 1) + theme_bw()
+  
+  p <- grid.arrange(p1, p2, ncol=2, top = textGrob(title))
+  if(out.file != ''){
+    ggsave(out.file,
+         plot = p, # or give ggplot object name as in myPlot,
+         width = 8, height = 5, 
+         units = "in", # other options c("in", "cm", "mm"), 
+         dpi = 300)
+  }
+  plot(p)
+  return(pc)
+}
+
+```
+
+```{r}
+S.O.RH348 <- prep_S.O(S.O.RH348)
+DimPlot(S.O.RH348, reduction = "umap")
+```
+
+```{r}
+S.O.RH96 <- prep_S.O(S.O.RH96)
+DimPlot(S.O.RH96, reduction = "umap")
+```
+
+```{r}
+expr.norm.RH348 <- getNormExpr(S.O.RH348, markers)
+cell.identity.RH348 <- getCellIdentity(expr.norm.RH348, method = 'mix')
+```
+
+
+```{r}
+S.O.PRU <- prep_S.O(S.O.PRU)
+DimPlot(S.O.PRU, reduction = "umap")
+```
+
+```{r}
+S.O.ME49 <- prep_S.O(S.O.ME49)
+DimPlot(S.O.ME49, reduction = "umap")
+```
+
+
+
+```{r}
+umap <- getUMAP(S.O.RH348, cell.identity.RH348, title = 'RH348')
+```
+
+
+```{r}
+pc <- getPCA(S.O.RH348, cell.identity.RH348, title = 'RH348')
+```
+
+
+```{r}
+expr.norm.RH96 <- getNormExpr(S.O.RH96, markers)
+cell.identity.RH96 <- getCellIdentity(expr.norm.RH96, method = 'mix')
+```
+
+```{r}
+umap <- getUMAP(S.O.RH96, cell.identity.RH96, title = 'RH96')
+```
+
+
+```{r}
+pc <- getPCA(S.O.RH96, cell.identity.RH96, title = 'RH96')
+```
+```{r}
+expr.norm.PRU <- getNormExpr(S.O.PRU, markers)
+cell.identity.PRU <- getCellIdentity(expr.norm.PRU, method = 'mix')
+```
+
+```{r}
+umap <- getUMAP(S.O.PRU, cell.identity.PRU, title = 'Pru')
+```
+```{r}
+pc <- getPCA(S.O.PRU, cell.identity.PRU, title = 'Pru')
+```
+```{r}
+expr.norm.ME49 <- getNormExpr(S.O.ME49, markers)
+cell.identity.ME49 <- getCellIdentity(expr.norm.ME49, method = 'mix')
+```
+
+```{r}
+umap <- getUMAP(S.O.ME49, cell.identity.ME49, title = 'Pru')
+```
+
+```{r}
+pc <- getPCA(S.O.ME49, cell.identity.ME49, title = 'Pru')
+```
+
+
+
