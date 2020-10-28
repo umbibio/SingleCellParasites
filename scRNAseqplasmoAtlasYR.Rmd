@@ -20,20 +20,15 @@ library(jcolors)
 require(gridExtra)
 library(grid)
 library(matrixStats)
-library(scater, quietly = TRUE)
-require("Matrix")
-library(patchwork)
-
-
+library(Matrix)
 ```
 
 ## Processing the expression matrices 
 ```{r}
 processCounts <- function(expr){
-  cols <- expr$X
-  expr <- t(expr[,-1])
-  colnames(expr) <- cols
-  return(expr)
+ expr.mtx <- as.matrix(expr[,-1])
+  rownames(expr.mtx) <- expr[,1]
+  return(expr.mtx) 
 }
 
 dfToMat <- function(df){
@@ -117,15 +112,19 @@ SS2_pheno        <- read.csv(paste(abs.path, SS2_pheno.csv.file, sep = ""))
 ```
 
 
+
+
+
 # creating seurat object from all data 
 ```{r}
-SS2.expr <- SS2_counts
+
+SS2.expr <- processCounts(SS2_counts)
 S.O.SS2 <- CreateSeuratObject(counts = SS2.expr, min.cells = 3, min.features = 200)
 
 VlnPlot(S.O.SS2, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
 FeatureScatter(S.O.SS2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 
-#S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 1000 & nFeature_RNA < 4000)
+S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 
 
@@ -158,7 +157,8 @@ dim(SS2_tmmlogcounts.blfs)
 
 ```{r S.O, echo=FALSE}
 
-S.O.SS2.blfs <- CreateSeuratObject(counts = SS2_counts.blfs, min.cells = 3, min.features = 200)
+SS2_expr.blfs <- processCounts(SS2_counts.blfs)
+S.O.SS2.blfs <- CreateSeuratObject(counts = SS2_expr.blfs, min.cells = 3, min.features = 200)
 
 
 # add life stages to meta data 
@@ -172,11 +172,11 @@ meta.new <- subset(meta, select = c("ShortenedLifeStage"))
 S.O.SS2.blfs <- AddMetaData(S.O.SS2.blfs, meta.new)
 
 
-VlnPlot(S.O.SS2.blfs, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2, group.by = "ShortenedLifeStage")
+VlnPlot(S.O.SS2.blfs, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
 
-FeatureScatter(S.O.SS2.blfs, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+FeatureScatter(S.O.SS2.blfs, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",  group.by = "ShortenedLifeStage")
 
-S.O.SS2.blfs <- subset(S.O.SS2.blfs, subset = nFeature_RNA > 200)
+S.O.SS2.blfs <- subset(S.O.SS2.blfs, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 ```
 
