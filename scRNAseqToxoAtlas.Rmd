@@ -122,8 +122,7 @@ processCounts <- function(expr){
 ```{r}
 convertID <- function(expr){
   expr.df <- expr %>% data.frame() %>% rownames_to_column(var = 'GeneID') 
-  expr.df <- left_join(ID.Orthologs, expr.df, by = c( 'TGME49ID' = 'GeneID')) %>%
-    select(-TGME49ID) 
+  expr.df <- left_join(ID.Orthologs, expr.df, by = c( 'TGME49ID' = 'GeneID')) %>% select(-TGME49ID) 
   row.names(expr.df) <- expr.df$TGGT1ID
   expr.df$TGGT1ID <- NULL
   expr <- expr.df

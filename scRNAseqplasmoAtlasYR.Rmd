@@ -98,24 +98,20 @@ alphapb10x.pheno <- read.csv(paste(abs.path, pb10x.IDC.pheno.file, sep = ""))
 ## reading smart seq single cells 
 
 ```{r SmartSeq2, echo= FALSE}
-abs.path <- "~/work/SCParasites/scRNAseqPlasmodAtlas/Expression_Matrices/Smartseq2/"
 
-SS2_counts.csv.file <- "SS2_counts.csv"
-SS2_pheno.csv.file <- "SS2_pheno.csv"
+in.dir <- "~/work/SCParasites/scRNAseqPlasmodAtlas/Expression_Matrices/Smartseq2/"
+
+SS2_counts.csv.file       <- "SS2_counts.csv"
+SS2_pheno.csv.file        <- "SS2_pheno.csv"
 SS2_tmmlogcounts.csv.file <- "SS2_tmmlogcounts.csv"
 
-SS2_counts       <- read.csv(paste(abs.path, SS2_counts.csv.file, sep = ""))
-SS2_tmmlogcounts <- read.csv(paste(abs.path, SS2_tmmlogcounts.csv.file, sep = ""))
-SS2_pheno        <- read.csv(paste(abs.path, SS2_pheno.csv.file, sep = "")) 
-
+SS2_counts        <- read.csv(paste(in.dir, SS2_counts.csv.file, sep = ""))
+SS2_tmmlogcounts  <- read.csv(paste(in.dir, SS2_tmmlogcounts.csv.file, sep = ""))
+SS2_pheno         <- read.csv(paste(in.dir, SS2_pheno.csv.file, sep = "")) 
 
 ```
 
-
-
-
-
-# creating seurat object from all data 
+# creating seurat object from all life stages 
 ```{r}
 
 SS2.expr <- processCounts(SS2_counts)
@@ -127,8 +123,29 @@ FeatureScatter(S.O.SS2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
 S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 
+```
+```{r}
+
+SS2.tmm.expr <- processCounts(SS2_tmmlogcounts)
+S.O.SS2.tmm <- CreateSeuratObject(counts = SS2.tmm.expr, min.cells = 3, min.features = 200)
+
+VlnPlot(S.O.SS2.tmm, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.SS2.tmm, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+S.O.SS2 <- subset(S.O.SS2.tmm, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 ```
+
+
+
+
+
+```{r}
+S.O.SS2 <- prep_S.O(S.O.SS2)
+DimPlot(S.O.SS2, reduction = "umap")
+DimPlot(S.O.SS2, reduction = "pca")
+```
+
 
 
 
@@ -150,10 +167,13 @@ SS2_tmmlogcounts.blfs <-
 dim(SS2_tmmlogcounts.blfs)
 
 
+#write.csv(SS2_pheno.blfs, "~/work/SCParasites/scRNAseqPlasmodAtlas/SS2_pheno_blood_stage.csv", row.names = FALSE)
+#write.csv(SS2_counts.blfs, "~/work/SCParasites/scRNAseqPlasmodAtlas/SS2_counts_blood_stage.csv", row.names = FALSE)
+#write.csv(SS2_tmmlogcounts, "~/work/SCParasites/scRNAseqPlasmodAtlas/SS2_tmmlogcounts_blood_stage.csv", row.names = FALSE)
 ```
 
 
-#3 create Seurat object 
+## create Seurat object ffor blodd stage cells 
 
 ```{r S.O, echo=FALSE}
 
@@ -161,26 +181,39 @@ SS2_expr.blfs <- processCounts(SS2_counts.blfs)
 S.O.SS2.blfs <- CreateSeuratObject(counts = SS2_expr.blfs, min.cells = 3, min.features = 200)
 
 
-# add life stages to meta data 
+# add life stages as a column to meta data 
 meta <- S.O.SS2.blfs@meta.data
 cell.names <- rownames(S.O.SS2.blfs@meta.data)
-lfstage <-
-  SS2_pheno.blfs$ShortenedLifeStage[which(SS2_pheno.blfs$X %in% cell.names)]
+lfstage <- SS2_pheno.blfs$ShortenedLifeStage[which(SS2_pheno.blfs$X %in% cell.names)]
 meta["ShortenedLifeStage"] <- lfstage
-
 meta.new <- subset(meta, select = c("ShortenedLifeStage"))
 S.O.SS2.blfs <- AddMetaData(S.O.SS2.blfs, meta.new)
 
 
 VlnPlot(S.O.SS2.blfs, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
-
 FeatureScatter(S.O.SS2.blfs, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",  group.by = "ShortenedLifeStage")
-
 S.O.SS2.blfs <- subset(S.O.SS2.blfs, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 ```
 
 ```{r}
+S.O.SS2.blfs <- prep_S.O(S.O.SS2.blfs)
+DimPlot(S.O.SS2.blfs, reduction = "umap")
+DimPlot(S.O.SS2.blfs, reduction = "pca")
+```
+
+
+```{r}
+d <- dist(t(S.O.SS2@assays$RNA@data))
+mds <- cmdscale(d = d, k = 2)
+colnames(mds) <- paste0("MDS_", 1:2)
+S.O.SS2[["mds"]] <- CreateDimReducObject(embeddings = mds, key = "MDS_", assay = DefaultAssay(S.O.SS2))
+DimPlot(S.O.SS2, reduction = "mds", pt.size = 0.5)
+DimPlot(S.O, reduction = "pca")
+```
+```{r}
+
+
 
 ```
 

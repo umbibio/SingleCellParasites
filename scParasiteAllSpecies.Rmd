@@ -1,0 +1,117 @@
+---
+title: "CombinedSpecies"
+author: "Yasaman Rezvani"
+date: "10/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r libs}
+library(openxlsx)
+library(readxl)
+library(tidyverse)
+library(Seurat)
+library(hdf5r)
+
+```
+
+```{r help functions}
+
+processCounts <- function(expr){
+  cols <- expr$index
+  expr <- t(expr[,-1])
+  colnames(expr) <- cols
+  return(expr)
+}
+
+processDFtoMatrix <- function(df){
+  matx <- as.matrix(df[,-1])
+  rownames(matx) <- df[,1]
+  return(matx)
+  
+}
+
+```
+
+## Malaria blood stage SC data 
+## Toxo intracellular RH384 SC data
+
+```{r Malaria}
+
+plasmo.path <- "~/work/SCParasites/scRNAseqPlasmodAtlas/"
+toxo.path  <- "~/work/SCParasites/scRNAseqToxoAtlas/"
+
+plasmo.expr.file <- "SS2_counts_blood_stage.csv"
+toxo.expr.file   <- "rh384_raw_counts_filtered.csv"
+
+plasmo.meta.file <- "SS2_pheno_blood_stage.csv"
+toxo.meta.file   <- "rh384_meta_data.csv"
+
+
+```
+
+## Reading toxo & plasmo data
+
+```{r}
+
+plasmo.expr <- read.csv(paste(plasmo.path, plasmo.expr.file, sep = ""))
+plasmo.meta <- read.csv(paste(plasmo.path, plasmo.meta.file, sep = ""))
+
+
+toxo.meta <- read.csv(paste(toxo.path, toxo.meta.file,sep = ""))
+toxo.expr <- read.csv(paste(toxo.path, toxo.expr.file, sep = ""))
+
+```
+
+## Orthologs
+
+```{r}
+orthologs.ID <- read.xlsx("~/work/SCParasites/GT1blastorthlgs/rec_GT1.vs.P.bergei.xlsx") 
+orthologs.ID <- orthologs.ID %>% select(c(query_id,subject_id)) 
+colnames(orthologs.ID) <- c("TGGT1ID", "PBERGID")
+
+```
+
+## 
+
+```{r}
+plasmo.expr <- left_join(orthologs.ID, plasmo.expr,by = c('PBERGID' = 'X'))
+plasmo.expr <- plasmo.expr %>% select(-PBERGID) 
+dim(plasmo.expr)
+```
+
+
+```{r}
+
+colnames(toxo.expr)[1]  <- "GeneName"
+colnames(plasmo.expr)[1] <- "GeneName"
+toxo.plasmo.df <- left_join(toxo.expr,plasmo.expr, by = "GeneName")
+
+```
+
+
+## merge meta toxo & plasmo
+```{r}
+
+
+```
+
+
+```{r}
+plasmo.expr <- processDFtoMatrix(plasmo.expr)
+head(plasmo.expr[,1:4])
+
+```
+
+```{r}
+toxo.expr <- processDFtoMatrix(toxo.expr)
+head(toxo.expr[,1:4])
+
+```
+
+
+
