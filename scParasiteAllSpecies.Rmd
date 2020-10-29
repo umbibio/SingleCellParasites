@@ -95,10 +95,7 @@ toxo.plasmo.df <- left_join(toxo.expr,plasmo.expr, by = "GeneName")
 
 
 ## merge meta toxo & plasmo
-```{r}
 
-
-```
 
 
 ```{r}
