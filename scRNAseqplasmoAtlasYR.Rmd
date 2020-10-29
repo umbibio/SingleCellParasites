@@ -124,6 +124,7 @@ S.O.SS2 <- subset(S.O.SS2, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 
 ```
+
 ```{r}
 
 SS2.tmm.expr <- processCounts(SS2_tmmlogcounts)
@@ -184,22 +185,24 @@ S.O.SS2.blfs <- CreateSeuratObject(counts = SS2_expr.blfs, min.cells = 3, min.fe
 # add life stages as a column to meta data 
 meta <- S.O.SS2.blfs@meta.data
 cell.names <- rownames(S.O.SS2.blfs@meta.data)
-lfstage <- SS2_pheno.blfs$ShortenedLifeStage[which(SS2_pheno.blfs$X %in% cell.names)]
+lfstage <- SS2_pheno.blfs$ShortenedLifeStage[which(SS2_pheno.blfs$X %in% cell.names)] 
+lfstage3 <- SS2_pheno.blfs$ShortenedLifeStage3[which(SS2_pheno.blfs$X %in% cell.names)]
 meta["ShortenedLifeStage"] <- lfstage
-meta.new <- subset(meta, select = c("ShortenedLifeStage"))
+meta["ShortenedLifeStage3"] <- lfstage3
+meta.new <- subset(meta, select = c("ShortenedLifeStage","ShortenedLifeStage3" ))
 S.O.SS2.blfs <- AddMetaData(S.O.SS2.blfs, meta.new)
 
 
-VlnPlot(S.O.SS2.blfs, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
-FeatureScatter(S.O.SS2.blfs, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",  group.by = "ShortenedLifeStage")
+VlnPlot(S.O.SS2.blfs, features = c("nFeature_RNA", "nCount_RNA"), group.by = "ShortenedLifeStage3", ncol = 2)
+FeatureScatter(S.O.SS2.blfs, feature1 = "nCount_RNA", feature2 = "nFeature_RNA",  group.by = "ShortenedLifeStage3")
 S.O.SS2.blfs <- subset(S.O.SS2.blfs, subset = nFeature_RNA > 200 & nFeature_RNA < 3000)
 
 ```
 
 ```{r}
 S.O.SS2.blfs <- prep_S.O(S.O.SS2.blfs)
-DimPlot(S.O.SS2.blfs, reduction = "umap")
-DimPlot(S.O.SS2.blfs, reduction = "pca")
+DimPlot(S.O.SS2.blfs, reduction = "umap", group.by = "ShortenedLifeStage3")
+DimPlot(S.O.SS2.blfs, reduction = "pca", group.by = "ShortenedLifeStage3")
 ```
 
 
@@ -208,8 +211,8 @@ d <- dist(t(S.O.SS2@assays$RNA@data))
 mds <- cmdscale(d = d, k = 2)
 colnames(mds) <- paste0("MDS_", 1:2)
 S.O.SS2[["mds"]] <- CreateDimReducObject(embeddings = mds, key = "MDS_", assay = DefaultAssay(S.O.SS2))
-DimPlot(S.O.SS2, reduction = "mds", pt.size = 0.5)
-DimPlot(S.O, reduction = "pca")
+# DimPlot(S.O.SS2, reduction = "mds", pt.size = 0.5, group.by = "ShortenedLifeStage3")
+# DimPlot(S.O.SS2, reduction = "pca", group.by = "ShortenedLifeStage3")
 ```
 ```{r}
 

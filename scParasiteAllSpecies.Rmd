@@ -16,6 +16,7 @@ library(readxl)
 library(tidyverse)
 library(Seurat)
 library(hdf5r)
+library(sctransform)
 
 ```
 
@@ -35,6 +36,17 @@ processDFtoMatrix <- function(df){
   
 }
 
+prep_S.O <- function(S.O){
+  S.O <- NormalizeData(S.O, normalization.method = "LogNormalize", scale.factor = 10000)
+  S.O <- FindVariableFeatures(S.O, selection.method = "vst", nfeatures = 2000)
+  all.genes <- rownames(S.O)
+  S.O <- ScaleData(S.O, features = all.genes)
+  S.O <- RunPCA(S.O, features = VariableFeatures(object = S.O))
+  S.O <- FindNeighbors(S.O, dims = 1:13)
+  S.O <- FindClusters(S.O, resolution = 0.1)
+  S.O <- RunUMAP(S.O, dims = 1:13)
+  return(S.O)
+}
 ```
 
 ## Malaria blood stage SC data 
@@ -90,25 +102,89 @@ dim(plasmo.expr)
 colnames(toxo.expr)[1]  <- "GeneName"
 colnames(plasmo.expr)[1] <- "GeneName"
 toxo.plasmo.df <- left_join(toxo.expr,plasmo.expr, by = "GeneName")
-
+toxo.plasmo.df[is.na(toxo.plasmo.df)] <- 0
 ```
 
 
 ## merge meta toxo & plasmo
 
+```{r}
+toxo.plasmo <- processDFtoMatrix(toxo.plasmo.df)
+
+```
+
+## Create Seurat Object 
+
+```{r}
+S.O.toxo.plasmo <- CreateSeuratObject(counts = toxo.plasmo, min.cells = 3, min.features = 200)
+VlnPlot(S.O.toxo.plasmo, features = c("nFeature_RNA", "nCount_RNA"), ncol = 2)
+FeatureScatter(S.O.toxo.plasmo, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+
+```
+
 
 
 ```{r}
-plasmo.expr <- processDFtoMatrix(plasmo.expr)
-head(plasmo.expr[,1:4])
+S.O.toxo.plasmo <- subset(S.O.toxo.plasmo, subset = nFeature_RNA > 200 & nFeature_RNA < 3500 )
 
 ```
 
 ```{r}
-toxo.expr <- processDFtoMatrix(toxo.expr)
-head(toxo.expr[,1:4])
+S.O.toxo.plasmo <- SCTransform(S.O.toxo.plasmo,verbose = FALSE)
+```
+
+```{r}
+S.O.toxo.plasmo <- RunPCA(S.O.toxo.plasmo, verbose = FALSE)
+S.O.toxo.plasmo <- RunUMAP(S.O.toxo.plasmo, dims = 1:30, verbose = FALSE)
+
+S.O.toxo.plasmo <- FindNeighbors(S.O.toxo.plasmo, dims = 1:30, verbose = FALSE)
+S.O.toxo.plasmo <- FindClusters(S.O.toxo.plasmo, verbose = FALSE)
+DimPlot(S.O.toxo.plasmo, label = TRUE) + NoLegend()
+```
+
+
+
+```{r}
+S.O.toxo.plasmo <- prep_S.O(S.O.toxo.plasmo)
+DimPlot(S.O.toxo.plasmo, reduction = "umap")
+DimPlot(S.O.toxo.plasmo, reduction = "pca")
+```
+
+
+```{r}
+
+pbmc_data <- Read10X("../SingleCellAtlas/Input/hg19/")
+pbmc <- CreateSeuratObject(counts = pbmc_data)
+pbmc <- PercentageFeatureSet(pbmc, pattern = "^MT-", col.name = "percent.mt")
+pbmc <- SCTransform(pbmc, vars.to.regress = "percent.mt", verbose = FALSE)
 
 ```
+
+```{r}
+pbmc <- RunPCA(pbmc, verbose = FALSE)
+pbmc <- RunUMAP(pbmc, dims = 1:30, verbose = FALSE)
+
+pbmc <- FindNeighbors(pbmc, dims = 1:30, verbose = FALSE)
+pbmc <- FindClusters(pbmc, verbose = FALSE)
+DimPlot(pbmc, label = TRUE) + NoLegend()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
